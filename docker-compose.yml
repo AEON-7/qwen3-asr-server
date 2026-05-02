@@ -26,6 +26,10 @@ services:
       - "8001:8001"
     shm_size: "4gb"
     restart: unless-stopped
+    # Opt into autoheal-driven restart on healthcheck failure (see autoheal
+    # service block below). Comment this out if you don't run autoheal.
+    labels:
+      - "autoheal=true"
     # Override CMD here to pick a different model / tune memory:
     # command:
     #   - vllm
@@ -38,12 +42,38 @@ services:
     #   - --max-model-len=8192
     #   - --max-num-seqs=4
     #   - --trust-remote-code
-    healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8001/health',timeout=2).status==200 else 1)"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
-      start_period: 90s
+    # Healthcheck baked into the Dockerfile probes /v1/models (only returns
+    # 200 once vLLM has actually loaded the model — /health alone returns
+    # 200 before the model is ready). You can override here:
+    # healthcheck:
+    #   test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/v1/models', timeout=4)"]
+    #   interval: 30s
+    #   timeout: 5s
+    #   retries: 3
+    #   start_period: 120s
+
+  # ── Optional watchdog ────────────────────────────────────────────────────
+  # Docker's `restart: unless-stopped` only restarts on container CRASH,
+  # not on healthcheck failure. To get auto-restart when the ASR endpoint
+  # goes unhealthy (model unloaded, GPU stalled, port listening but engine
+  # wedged), run `willfarrell/autoheal` alongside. It watches every container
+  # labeled `autoheal=true` (above) and `docker restart`s any that report
+  # an unhealthy status.
+  #
+  # Comment out the entire autoheal service block if you'd rather manage
+  # restarts via systemd, k8s liveness probes, or external monitoring.
+  autoheal:
+    image: willfarrell/autoheal:latest
+    container_name: aeon-autoheal
+    restart: unless-stopped
+    environment:
+      - AUTOHEAL_CONTAINER_LABEL=autoheal      # only touch labeled containers
+      - AUTOHEAL_INTERVAL=30                   # check every 30 s
+      - AUTOHEAL_START_PERIOD=180              # ignore failures during cold start
+      - AUTOHEAL_DEFAULT_STOP_TIMEOUT=20       # SIGKILL grace period
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    # Doesn't need to join aeon-stack — talks to the docker daemon directly.
 
 networks:
   aeon-stack:

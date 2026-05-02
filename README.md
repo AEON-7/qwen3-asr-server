@@ -169,6 +169,8 @@ downstream client (matrix-voip-agent, OpenClaw, your own scripts) should use:
   topology with vLLM main, qwen3-tts-server, Matrix, OpenClaw
 - [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) — wiring guides for Matrix
   voice calls, OpenAI SDK, OpenWebUI, Home Assistant, custom clients
+- [docs/OPS.md](docs/OPS.md) — health checks, autoheal/watchdog patterns,
+  triage for common failure modes
 - [agents.md](agents.md) — agent-readable bring-up runbook
 
 ## Endpoints
