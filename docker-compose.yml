@@ -1,0 +1,50 @@
+# OpenAI-compatible /v1/audio/transcriptions endpoint —
+# Qwen3-ASR-0.6B served by vLLM on a shared Docker bridge.
+#
+# RTF on DGX Spark (sm_121a, hot path): ~16x real-time, 120ms for a 2s clip.
+#
+# Designed to share a Docker bridge with a vLLM main + a Qwen3-TTS sidecar
+# so the audio pipeline never leaves the host. To use:
+#   docker network create aeon-stack    # one-time, if not already created
+#   docker compose up -d
+services:
+  qwen3-asr:
+    image: ghcr.io/aeon-7/qwen3-asr-server:latest
+    container_name: qwen3-asr
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - ENABLE_NVFP4_SM100=0
+      - VLLM_TEST_FORCE_FP8_MARLIN=1
+      - VLLM_USE_FLASHINFER_SAMPLER=1
+      # - HF_TOKEN=...   # only needed for gated repos
+    volumes:
+      - ${HOME}/.cache/huggingface:/root/.cache/huggingface
+    networks:
+      - aeon-stack
+    ports:
+      - "8001:8001"
+    shm_size: "4gb"
+    restart: unless-stopped
+    # Override CMD here to pick a different model / tune memory:
+    # command:
+    #   - vllm
+    #   - serve
+    #   - Qwen/Qwen3-ASR-1.7B
+    #   - --served-model-name=qwen3-asr
+    #   - --host=0.0.0.0
+    #   - --port=8001
+    #   - --gpu-memory-utilization=0.16
+    #   - --max-model-len=8192
+    #   - --max-num-seqs=4
+    #   - --trust-remote-code
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8001/health',timeout=2).status==200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+
+networks:
+  aeon-stack:
+    external: true
